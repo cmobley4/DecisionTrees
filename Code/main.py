@@ -10,12 +10,12 @@
 #   resources used for building this starter file
 #   - https://bradfieldcs.com/algos/trees/representing-a-tree/
 import csv
-
+import pandas as pd
 
 
 class InternalNode(object):
     # An Internal Node class that has an associated feature and criteria for splitting. 
-    def __init__(self, feature, criteria): # Constructor
+    def __init__(self, feature, criteria):  # Constructor
         self.type = type
         self.feature = feature
         self.criteria = criteria
