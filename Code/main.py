@@ -65,18 +65,16 @@ class DecisionTreeBuilder:
     def __init__(self):  # Constructor
         self.tree = None  # Define a ``tree'' instance variable.
 
+    # This function constructs a decision tree with a default threshold of None and a default max depth of None
+    # The depth of the constructed tree is returned
     def construct(self, data, threshold=None, max_depth=None, output_feature=None, outputs=(True, False)):
-        # This function constructs your tree with a default threshold of None.
-        # The depth of the constructed tree is returned.
         if self.tree is None:
             self.tree = 0
         else:
             self.tree += 1
 
-        print('Depth =', self.tree)
-
         # get output feature name
-        # if no output feature is specified assume it is the last column
+        # if no output feature is specified assume it is set to the last column name
         if output_feature is None:
             out_feat = data.iloc[:, -1].name
         else:
@@ -84,38 +82,29 @@ class DecisionTreeBuilder:
 
         # Find postive, negative, and total number of samples
         num_samples = data.shape[0]  # total number of samples
-        p_samples = data[data[out_feat] == outputs[0]]
-        n_samples = data[data[out_feat] == outputs[1]]
+        p_samples = data[data[out_feat] == outputs[0]]  # df of all positive samples
+        n_samples = data[data[out_feat] == outputs[1]]  # df of all negative samples
         num_p = p_samples.shape[0]  # number of positive samples
         num_n = n_samples.shape[0]  # number of negative samples
-        print('num_samples =', num_samples)
-        print('num_p =', num_p)
-        print('num_n =', num_n)
 
         # If all samples are positive, create leaf
-        if num_p == 0:
-            leaf = LeafNode(outputs[1])
-
-            if self.tree == 0:
-                self.tree = leaf
-                return 0
-
-            print('Leaf | Decision:', leaf.decision, ' Depth:', self.tree)
-            print('------------------------------')
-
-            self.tree -= 1
-            return leaf
-
-        # If all samples are negative, create leaf
-        if num_n == 0:
+        if num_p == num_samples:
             leaf = LeafNode(outputs[0])
 
             if self.tree == 0:
                 self.tree = leaf
                 return 0
 
-            print('Leaf | Decision:', leaf.decision, ' Depth:', self.tree)
-            print('------------------------------')
+            self.tree -= 1
+            return leaf
+
+        # If all samples are negative, create leaf
+        if num_n == num_samples:
+            leaf = LeafNode(outputs[1])
+
+            if self.tree == 0:
+                self.tree = leaf
+                return 0
 
             self.tree -= 1
             return leaf
@@ -131,15 +120,11 @@ class DecisionTreeBuilder:
                 self.tree = leaf
                 return 0
 
-            print('Leaf | Decision:', leaf.decision, ' Depth:', self.tree)
-            print('------------------------------')
-
             self.tree -= 1
             return leaf
 
         # Calculate H(S)
         Hs = -(num_p/num_samples)*log2(num_p/num_samples) - (num_n/num_samples)*log2(num_n/num_samples)
-        print('Hs =', Hs)
 
         # get list of active features (ie. not including output feature)
         active_features = data.columns.values
@@ -148,27 +133,27 @@ class DecisionTreeBuilder:
         # Calculate H(S|Feature) and IG for each active feature, keeping track of the feature with the highest IG
         ig_max = 0
         best_feat = None
-        split = 0
+        split = None
         for feature in active_features:
             # Find splitting value for this feature
             split_value = (p_samples[feature].mean() + n_samples[feature].mean()) / 2.0
 
             # Find number of positive and negative samples on the left side of split
-            pl = p_samples[p_samples[feature] <= split_value].shape[0]
-            nl = n_samples[n_samples[feature] <= split_value].shape[0]
+            p_left = p_samples[p_samples[feature] <= split_value].shape[0]
+            n_left = n_samples[n_samples[feature] <= split_value].shape[0]
 
             # Find number of positive and negative samples on the right side of split
-            pr = p_samples[p_samples[feature] > split_value].shape[0]
-            nr = n_samples[n_samples[feature] > split_value].shape[0]
+            p_right = p_samples[p_samples[feature] > split_value].shape[0]
+            n_right = n_samples[n_samples[feature] > split_value].shape[0]
 
             # Calculate H(S|Feature)
-            Hpl = 0 if pl == 0 else -pl/(pl + nl)*log2(pl/(pl + nl))
-            Hnl = 0 if nl == 0 else -nl/(pl + nl)*log2(nl/(pl + nl))
-            Hpr = 0 if pr == 0 else -pr/(pr + nr)*log2(pr/(pr + nr))
-            Hnr = 0 if nr == 0 else -nr/(pr + nr)*log2(nr/(pr + nr))
+            H_p_left = 0 if p_left == 0 else -p_left/(p_left + n_left)*log2(p_left/(p_left + n_left))
+            H_n_left = 0 if n_left == 0 else -n_left/(p_left + n_left)*log2(n_left/(p_left + n_left))
+            H_p_right = 0 if p_right == 0 else -p_right/(p_right + n_right)*log2(p_right/(p_right + n_right))
+            H_n_right = 0 if n_right == 0 else -n_right/(p_right + n_right)*log2(n_right/(p_right + n_right))
 
-            Hsf = (pl + nl)/num_samples*(Hpl + Hnl) +\
-                  (pr + nr)/num_samples*(Hpr + Hnr)
+            Hsf = (p_left + n_left)/num_samples*(H_p_left + H_n_left) +\
+                  (p_right + n_right)/num_samples*(H_p_right + H_n_right)
 
             # get information gain and check if it is the new maximum
             ig = Hs - Hsf
@@ -188,68 +173,62 @@ class DecisionTreeBuilder:
                 self.tree = leaf
                 return 0
 
-            print('Leaf | Decision:', leaf.decision, ' Depth:', self.tree)
-            print('------------------------------')
-
             self.tree -= 1
             return leaf
 
         node = InternalNode(best_feat, split)
-        print('Node | Feature:', node.feature, 'Criteria:', node.criteria, 'Depth:', self.tree)
-        print('------------------------------')
 
-        print('Left Branch!')
         left_data = data[data[best_feat] <= split]
-        left = self.construct(left_data, threshold=threshold, max_depth=max_depth, output_feature=out_feat,
-                              outputs=outputs)
+        left = self.construct(left_data,
+                              threshold=threshold, max_depth=max_depth, output_feature=out_feat, outputs=outputs)
 
-        print('Right Branch!')
         right_data = data[data[best_feat] > split]
-        right = self.construct(right_data, threshold=threshold, max_depth=max_depth, output_feature=out_feat,
-                               outputs=outputs)
+        right = self.construct(right_data,
+                               threshold=threshold, max_depth=max_depth, output_feature=out_feat, outputs=outputs)
 
         node.insert_left(left)
         node.insert_right(right)
 
         if self.tree == 0:
-            print('At Root!')
             self.tree = node
             return node.get_depth()
 
         self.tree -= 1
         return node
 
-        # print("Here's the first row in the training data:")
-        # print(data[0])
-        #
-        # # As a starting place, we are statically setting our tree to a root node
-        # # with two children. This code does not reflect a correct approach as it
-        # # does not build the tree from the data. (See Decision Trees II Slides.)
-        # root = InternalNode('Clump Thickness', 0.75)
-        # child1 = LeafNode(2)  # Decision: Benign
-        # root.insert_left(child1)
-        #
-        # child2 = LeafNode(4)  # Decision: Malignant
-        # root.insert_right(child2)
-        #
-        # self.tree = root
-        # return self.tree.get_depth(0)  # Return the depth of your constructed tree.
-
+    # This function classifies data with your tree.
+    # The predictions for the given data are returned.
     def classify(self, data):
-        # This function classifies data with your tree.
-        # The predictions for the given data are returned.
+        # Iterate through data classifying it based on the tree and storing its predicted value
+        predictions = []
+        for i, sample in data.iterrows():
+            # Work way through nodes until sample reaches a leaf
+            node = self.tree
+            while isinstance(node, InternalNode):
+                if sample[node.feature] > node.criteria:
+                    node = node.right
+                else:
+                    node = node.left
 
-        # Use the constructed tree here., e.g. self.tree
+            predictions.append(node.decision)
 
         # Return a list of predictions.
-        return [2, 2, 4, 2, 3, 4]  # Note: This list should be built dynamically.
+        return predictions
 
 
 if __name__ == '__main__':
+    # Read training data from file and store in pandas DataFrame
     data = pd.read_csv('E:/Chris Mobley/Documents/Projects/DecisionTrees/Data/breast-cancer-wisconsin-training.data')
+
+    # Build tree based on data
     tree = DecisionTreeBuilder()
     depth = tree.construct(data, output_feature='Class', outputs=(2, 4))
-    print('\nMax Depth:', depth)
+    print('Max Depth:', depth)
+
+    # Test to make sure tree was built correctly
+    predictions = tree.classify(data)
+    true_values = list(data['Class'].values)
+    print(predictions == true_values)
     # d = [['1st', 'Male', 'Child', 'True']] * 5 +\
     #     [['1st', 'Male', 'Adult', 'True']] * 57 + \
     #     [['1st', 'Male', 'Adult', 'False']] * 118 +\
